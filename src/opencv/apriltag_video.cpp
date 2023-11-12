@@ -47,7 +47,7 @@ void callback(const sensor_msgs::Image::ConstPtr& msg){
 
     image_u8_t* im8 = cv2im8_copy(gray);
 
-    zarray_t *detections = apriltag_detector_detect(td, im8);//! jin:已知图象中点和实际标定板中点的对应关系，可以计算H矩阵
+    zarray_t *detections = apriltag_detector_detect(td, im8);
 
     printf("Detected %d tags.\n", zarray_size(detections));
 
@@ -60,7 +60,7 @@ void callback(const sensor_msgs::Image::ConstPtr& msg){
         zarray_get(detections, i, &det);
 
         matd_t* M = pose_from_homography(det->H, fx, fy, cx, cy,
-                                         tagsize, z_sign, det->p, NULL, NULL);//! jin:已知H矩阵，可以计算出带尺度的Rt，已知码的实际大小，可以恢复出真实pose,tag码的中心，右手坐标系
+                                         tagsize, z_sign, det->p, NULL, NULL);
 
         printf("Detection %d of %d:\n \tFamily: tag%2dh%2d\n \tID: %d\n \tHamming: %d\n"
                "\tGoodness: %.3f\n \tMargin: %.3f\n \tCenter: (%.3f,%.3f)\n"
