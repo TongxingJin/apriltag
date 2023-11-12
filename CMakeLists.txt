@@ -16,6 +16,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_C_FLAGS}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+SET(CMAKE_BUILD_TYPE "Release")
+
 
 if(APPLE)
   SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -30,9 +32,11 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  # livox_ros_driver
+  livox_ros_driver
   message_generation
   eigen_conversions
+  image_transport
+  cv_bridge
 )
 
 find_package(Eigen3 REQUIRED)
