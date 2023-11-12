@@ -7,32 +7,34 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Odometry.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <cv_bridge/cv_bridge.h>
 #include "opencv2/opencv.hpp"
 #include <Eigen/Dense>
 #include <livox_ros_driver/CustomMsg.h>
-
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
 const double fx=279.3362, fy=281.7544, cx=331.7082, cy=242.6293, // Camera parameters
-        tagsize=0.172, z_sign=1.0;//0.062
-
+         z_sign=1.0;//0.062
+double tagsize;
 Eigen::Matrix3f extrin_rot;
 Eigen::Vector3f extrin_trans;
 
 const char* MAT_FMT = "\t%12f, ";
 
-const char* window = "AprilTag";
+// const char* window = "AprilTag";
 
 cv::Mat frame;
 
 apriltag_detector_t *td;
-ros::Publisher odo_pub, cloud_pub;
+ros::Publisher odo_pub, cloud_pub, tag_cloud_pub;
 void callback(const sensor_msgs::Image::ConstPtr& msg){
     cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3);
     cv::Mat frame = cv_ptr->image;
-    cv::imshow(window, frame);
+    // cv::imshow(window, frame);
 
     Mat8uc1 gray;
 
@@ -49,7 +51,9 @@ void callback(const sensor_msgs::Image::ConstPtr& msg){
 
     printf("Detected %d tags.\n", zarray_size(detections));
 
-    cv::Mat display = detectionsImage(detections, frame.size(), frame.type());
+    // cv::Mat display = detectionsImage(detections, frame.size(), frame.type());
+
+    pcl::PointCloud<pcl::PointXYZINormal> cloud;
 
     for (int i = 0; i < zarray_size(detections); i++) {
         apriltag_detection_t *det;
@@ -70,67 +74,59 @@ void callback(const sensor_msgs::Image::ConstPtr& msg){
         printf("\tPose:\n");
         matd_print(M, MAT_FMT);
 
-        if(i == 0){
-            nav_msgs::Odometry real_odo;
-            real_odo.header.frame_id = "lidar_frame";
-            real_odo.child_frame_id = "tag";
-            real_odo.header.stamp = msg->header.stamp;// ros::Time().fromSec(lidar_end_time);
-            Eigen::Vector3f trans_cam((M)->data[0*4+3], (M)->data[1*4+3], (M)->data[2*4+3]);
-            Eigen::Vector3f trans_lidar = extrin_rot * trans_cam + extrin_trans;
-            real_odo.pose.pose.position.x = trans_lidar.x();
-            real_odo.pose.pose.position.y = trans_lidar.y();
-            real_odo.pose.pose.position.z = trans_lidar.z();
-            Eigen::Matrix3f rot;
-            rot << (M)->data[0*4+0], (M)->data[0*4+1], (M)->data[0*4+2],
-                    (M)->data[1*4+0], (M)->data[1*4+1], (M)->data[1*4+2],
-                    (M)->data[2*4+0], (M)->data[2*4+1], (M)->data[2*4+2];
-            rot = extrin_rot * rot;
-            Eigen::Quaternionf qq(rot);
-            real_odo.pose.pose.orientation.x = qq.x();
-            real_odo.pose.pose.orientation.y = qq.y();
-            real_odo.pose.pose.orientation.z = qq.z();
-            real_odo.pose.pose.orientation.w = qq.w();
-            odo_pub.publish(real_odo);
-        }
+        pcl::PointXYZINormal p;
+        Eigen::Vector3f trans_cam((M)->data[0*4+3], (M)->data[1*4+3], (M)->data[2*4+3]);
+        Eigen::Vector3f trans_lidar = extrin_rot * trans_cam + extrin_trans;
+        p.x = trans_lidar.x();
+        p.y = trans_lidar.y();
+        p.z = trans_lidar.z();
+        Eigen::Matrix3f rot;
+        rot << (M)->data[0*4+0], (M)->data[0*4+1], (M)->data[0*4+2],
+                (M)->data[1*4+0], (M)->data[1*4+1], (M)->data[1*4+2],
+                (M)->data[2*4+0], (M)->data[2*4+1], (M)->data[2*4+2];
+        rot = extrin_rot * rot;
+        Eigen::AngleAxisf q(rot);
+        Eigen::Vector3f direction = q.axis();
+        float norm = q.angle();
+        Eigen::Vector3f rotation = direction * norm;
+        p.normal_x = rotation.x();
+        p.normal_y = rotation.y();
+        p.normal_z = rotation.z();
+        p.intensity = det->id;
+        cloud.push_back(p);
+
     }
+    cloud.width = cloud.points.size();
+    if(cloud.points.size() > 0){
+      sensor_msgs::PointCloud2 ros_cloud;
+      pcl::toROSMsg(cloud, ros_cloud);
+      ros_cloud.header.frame_id = "lidar_frame";  
+      ros_cloud.header.stamp = msg->header.stamp;
+      tag_cloud_pub.publish(ros_cloud);
+    }
+    
 
     printf("\n");
 
     apriltag_detections_destroy(detections);
 
-    display = 0.5*display + 0.5*frame;
-    cv::imshow(window, display);
     image_u8_destroy(im8);
 
 }
 
-
-void livoxPointCloudCallback(const livox_ros_driver::CustomMsg::ConstPtr& livox_cloud_msg){
-  // livox_ros_driver::CustomMsg livox_cloud_msg =
-  //         *(m.instantiate<livox_ros_driver::CustomMsg>()); // message type
-      pcl::PointCloud<pcl::PointXYZI> output_cloud;
-      for (uint i = 0; i < livox_cloud_msg->point_num; ++i) {
-        pcl::PointXYZI p;
-        p.x = livox_cloud_msg->points[i].x;
-        p.y = livox_cloud_msg->points[i].y;
-        p.z = livox_cloud_msg->points[i].z;
-        p.intensity = livox_cloud_msg->points[i].reflectivity;
-        output_cloud.points.push_back(p);
-      }
-      sensor_msgs::PointCloud2 laserCloudmsg;
-      pcl::toROSMsg(output_cloud, laserCloudmsg);
-      laserCloudmsg.header.stamp = livox_cloud_msg->header.stamp;
-      laserCloudmsg.header.frame_id = "lidar_frame";
-      cloud_pub.publish(laserCloudmsg);
-}
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "apriltag");
+  ros::init(argc, argv, "apriltag_video");
   ros::NodeHandle nh;
 
-    extrin_rot << 0.0, 0.0, 1.0,
-            -1.0, 0.0, 0.0,
-            0.0, -1.0, 0.0;
-    extrin_trans << 0.08, 0.0, -0.07;
+  extrin_rot << 0.0, 0.0, 1.0,
+          -1.0, 0.0, 0.0,
+          0.0, -1.0, 0.0;
+  extrin_trans << 0.08, 0.0, -0.07;
+  
+  nh.param<double>("tag_size", tagsize, 0.1);
+
+  ROS_INFO("tag_size = %f", tagsize);
+  
   getopt_t *getopt = getopt_create();
 
   getopt_add_bool(getopt, 'h', "help", 0, "Show this help");
@@ -195,11 +191,15 @@ int main(int argc, char** argv) {
     }
   }
 
-    cv::namedWindow(window);
-    odo_pub = nh.advertise<nav_msgs::Odometry>("/tag_pose", 5);
-    cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/scans", 5);
+    // cv::namedWindow(window);
+    // odo_pub = nh.advertise<nav_msgs::Odometry>("/tag_pose", 5);
+    // cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/scans", 5);
+
+
+    tag_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/tag_pose_cloud", 5);
+
     ros::Subscriber img_sub = nh.subscribe<sensor_msgs::Image>("/usb_cam/image_raw", 5, &callback);
-    ros::Subscriber cloud_sub = nh.subscribe<livox_ros_driver::CustomMsg>("/livox/lidar", 5, &livoxPointCloudCallback);
+    // ros::Subscriber cloud_sub = nh.subscribe<livox_ros_driver::CustomMsg>("/livox/lidar", 5, &livoxPointCloudCallback);
 
     ros::spin();
 //  cv::VideoCapture* cap;
