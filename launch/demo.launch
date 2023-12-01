@@ -1,7 +1,7 @@
 <launch>
 	<arg name="rviz" default="true" />
 
-  <param name="tag_size" type="double" value="0.172"/>
+  <param name="tag_size" type="double" value="0.096"/>
     <node pkg="apriltag" type="apriltag_video" name="apriltag_video" output="screen"/>
 
     <node pkg="apriltag" type="apriltag_demo" name="apriltag_demo" output="screen" />

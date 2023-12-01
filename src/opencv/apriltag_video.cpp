@@ -118,12 +118,17 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "apriltag_video");
   ros::NodeHandle nh;
 
-  extrin_rot << 0.0, 0.0, 1.0,
-          -1.0, 0.0, 0.0,
-          0.0, -1.0, 0.0;
-  extrin_trans << 0.08, 0.0, -0.07;
-  
-  nh.param<double>("tag_size", tagsize, 0.1);
+  // extrin_rot << 0.0, 0.0, 1.0,
+  //         -1.0, 0.0, 0.0,
+  //         0.0, -1.0, 0.0;
+  // extrin_trans << 0.08, 0.0, -0.07;
+
+  extrin_rot << -0.00102555, -0.0105803, 0.999944,
+                -0.999976, -0.00692304, -0.00109884,
+                0.00693428, -0.99992, -0.0105728;
+  extrin_trans << 0.074361, -0.000497795, -0.0607882;
+
+  nh.param<double>("tag_size", tagsize, 0.096);
 
   ROS_INFO("tag_size = %f", tagsize);
   
